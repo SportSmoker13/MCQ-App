@@ -10,6 +10,7 @@ interface Props {
   answeredCount: number;
   onSubmit: () => void;
   isSubmitting: boolean;
+  mode?: "mock" | "study";
 }
 
 export function TestHeader({
@@ -18,6 +19,7 @@ export function TestHeader({
   answeredCount,
   onSubmit,
   isSubmitting,
+  mode = "mock",
 }: Props) {
   const progress = (answeredCount / total) * 100;
 
@@ -52,7 +54,7 @@ export function TestHeader({
             ) : (
               <span className="flex items-center gap-1.5">
                 <Flag className="w-4 h-4" />
-                Submit Test
+                {mode === "study" ? "Finish Session" : "Submit Test"}
               </span>
             )}
           </Button>

@@ -59,6 +59,7 @@ export async function runAnsweringAgent(
         ),
       }));
     } catch (err) {
+      console.error(`[Answering] Attempt ${attempt} failed:`, err instanceof Error ? err.message : err);
       if (attempt === 2) {
         throw new Error(
           `Answering Agent failed after 2 attempts: ${err instanceof Error ? err.message : String(err)}`,
@@ -76,9 +77,14 @@ export async function runAnsweringAgent(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Remove markdown code fences and any leading/trailing text */
 function stripJsonFences(text: string): string {
-  return text
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
+  const firstBracket = text.indexOf("[");
+  const lastBracket = text.lastIndexOf("]");
+  
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    return text.substring(firstBracket, lastBracket + 1);
+  }
+  
+  return text.trim();
 }

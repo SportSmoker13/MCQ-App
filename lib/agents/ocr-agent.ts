@@ -14,7 +14,7 @@ const RawQuestionArraySchema = z.array(RawQuestionSchema);
 
 // ─── OCR Agent ────────────────────────────────────────────────────────────────
 
-const OCR_MODEL = "llama3.2-vision";
+const OCR_MODEL = "llava";
 
 /**
  * OCR Agent
@@ -26,6 +26,11 @@ const OCR_MODEL = "llama3.2-vision";
  * @returns Array of RawQuestion objects
  */
 export async function runOcrAgent(base64DataUri: string): Promise<RawQuestion[]> {
+  // Strip data URI prefix if present
+  const base64 = base64DataUri.includes(",") 
+    ? base64DataUri.split(",")[1] 
+    : base64DataUri;
+
   const messages: OllamaMessage[] = [
     {
       role: "system",
@@ -33,16 +38,8 @@ export async function runOcrAgent(base64DataUri: string): Promise<RawQuestion[]>
     },
     {
       role: "user",
-      content: [
-        {
-          type: "image_url",
-          image_url: { url: base64DataUri },
-        },
-        {
-          type: "text",
-          text: "Extract all multiple-choice questions from this image. Return the JSON array only.",
-        },
-      ],
+      content: "Extract all multiple-choice questions from this image. Return the JSON array only.",
+      images: [base64],
     },
   ];
 
@@ -55,6 +52,7 @@ export async function runOcrAgent(base64DataUri: string): Promise<RawQuestion[]>
       const validated = RawQuestionArraySchema.parse(parsed);
       return validated;
     } catch (err) {
+      console.error(`[OCR] Attempt ${attempt} failed:`, err instanceof Error ? err.message : err);
       if (attempt === 2) {
         throw new Error(
           `OCR Agent failed after 2 attempts: ${err instanceof Error ? err.message : String(err)}`,
@@ -73,10 +71,14 @@ export async function runOcrAgent(base64DataUri: string): Promise<RawQuestion[]>
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Remove markdown code fences if the model wraps output in them despite instructions */
+/** Remove markdown code fences and any leading/trailing text */
 function stripJsonFences(text: string): string {
-  return text
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
+  const firstBracket = text.indexOf("[");
+  const lastBracket = text.lastIndexOf("]");
+  
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    return text.substring(firstBracket, lastBracket + 1);
+  }
+  
+  return text.trim();
 }

@@ -14,19 +14,34 @@ import { toast } from "sonner";
 
 interface Props {
   maxQuestions: number;
+  sections: { id: string; name: string; count: number }[];
 }
 
-export function TestConfigForm({ maxQuestions }: Props) {
+export function TestConfigForm({ maxQuestions, sections }: Props) {
   const router = useRouter();
+  const [selectedSectionId, setSelectedSectionId] = useState<string>("all");
+  const [mode, setMode] = useState<"mock" | "study">("mock");
   const [count, setCount] = useState(Math.min(10, maxQuestions));
   const [takeAll, setTakeAll] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const effectiveCount = takeAll ? maxQuestions : count;
+  const currentMax = selectedSectionId === "all" 
+    ? maxQuestions 
+    : sections.find(s => s.id === selectedSectionId)?.count || 0;
+
+  const effectiveCount = takeAll ? currentMax : Math.min(count, currentMax);
 
   function handleTakeAllToggle(checked: boolean) {
     setTakeAll(checked);
-    if (!checked) setCount(Math.min(10, maxQuestions));
+    if (!checked) setCount(Math.min(10, currentMax));
+  }
+
+  function handleSectionChange(sectionId: string) {
+    setSelectedSectionId(sectionId);
+    const newMax = sectionId === "all" 
+      ? maxQuestions 
+      : sections.find(s => s.id === sectionId)?.count || 0;
+    setCount(Math.min(count, newMax));
   }
 
   async function handleStart() {
@@ -38,16 +53,20 @@ export function TestConfigForm({ maxQuestions }: Props) {
     }
 
     startTransition(async () => {
-      const result = await startTest(effectiveCount);
+      const result = await startTest(
+        effectiveCount, 
+        selectedSectionId === "all" ? undefined : selectedSectionId,
+        mode
+      );
       if (!result.success) {
         toast.error("Could not start test", { description: result.error });
         return;
       }
 
-      // Store questions in sessionStorage to pass to test page
+      // Store questions and mode in sessionStorage
       sessionStorage.setItem(
         `test-${result.testId}`,
-        JSON.stringify(result.questions),
+        JSON.stringify({ questions: result.questions, mode: result.mode }),
       );
       router.push(`/test/${result.testId}`);
     });
@@ -70,6 +89,72 @@ export function TestConfigForm({ maxQuestions }: Props) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Mode Selector */}
+        <div className="space-y-2">
+          <Label className="text-slate-300">Choose Mode</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setMode("mock")}
+              className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${
+                mode === "mock"
+                  ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+                  : "bg-slate-800/40 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+              }`}
+            >
+              <Shuffle className="w-5 h-5" />
+              <div className="text-center">
+                <div className="font-semibold text-sm">Mock Test</div>
+                <div className="text-[10px] opacity-70">Timed & Shuffled</div>
+              </div>
+            </button>
+            <button
+              onClick={() => setMode("study")}
+              className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${
+                mode === "study"
+                  ? "bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-600/20"
+                  : "bg-slate-800/40 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+              }`}
+            >
+              <PlayCircle className="w-5 h-5" />
+              <div className="text-center">
+                <div className="font-semibold text-sm">Study Mode</div>
+                <div className="text-[10px] opacity-70">Immediate Feedback</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Section Selector */}
+        <div className="space-y-2">
+          <Label className="text-slate-300">Select Section</Label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <button
+              onClick={() => handleSectionChange("all")}
+              className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                selectedSectionId === "all"
+                  ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+                  : "bg-slate-800/40 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+              }`}
+            >
+              All Sections
+            </button>
+            {sections.map((section) => (
+              <button
+                key={section.id}
+                onClick={() => handleSectionChange(section.id)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                  selectedSectionId === section.id
+                    ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+                    : "bg-slate-800/40 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+                }`}
+              >
+                {section.name}
+                <span className="ml-1.5 opacity-60 text-[10px]">({section.count})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Take all toggle */}
         <div className="flex items-center justify-between bg-slate-800/40 rounded-xl p-4 border border-slate-700/40">
           <div>
@@ -101,19 +186,19 @@ export function TestConfigForm({ maxQuestions }: Props) {
             <Slider
               id="question-count-slider"
               min={1}
-              max={maxQuestions || 1}
+              max={currentMax || 1}
               step={1}
               value={[count]}
               onValueChange={(val) => {
                 const nextVal = Array.isArray(val) ? val[0] : val;
                 if (typeof nextVal === 'number') setCount(nextVal);
               }}
-              disabled={maxQuestions === 0}
+              disabled={currentMax === 0}
               className="w-full"
             />
             <div className="flex justify-between text-xs text-slate-500">
               <span>1</span>
-              <span>{maxQuestions}</span>
+              <span>{currentMax}</span>
             </div>
           </div>
         )}

@@ -13,17 +13,33 @@ import {
  * Fetches `count` random questions (with options) for the current user.
  * Creates a MockTest record and returns the testId + questions.
  */
-export async function startTest(count: number): Promise<StartTestResult> {
+export async function startTest(count: number, sectionId?: string, mode: "mock" | "study" = "mock"): Promise<StartTestResult & { mode: "mock" | "study" }> {
   const session = await auth();
   if (!session?.user?.id) {
     return { success: false, error: "Not authenticated." };
   }
   const userId = session.user.id;
 
-  // Get total available questions for this user
-  const totalAvailable = await prisma.question.count({
-    where: { document: { userId } },
-  });
+  let where: Prisma.QuestionWhereInput = {};
+
+  if (sectionId === "none") {
+    where.sectionId = null;
+  } else if (sectionId) {
+    // If a section is selected, we want all questions from sections with that same NAME,
+    // across all users, since we merged them in the UI.
+    const targetSection = await prisma.section.findUnique({
+      where: { id: sectionId },
+      select: { name: true }
+    });
+    
+    if (targetSection) {
+      where.section = {
+        name: targetSection.name
+      };
+    }
+  }
+
+  const totalAvailable = await prisma.question.count({ where });
 
   if (totalAvailable === 0) {
     return {
@@ -34,9 +50,9 @@ export async function startTest(count: number): Promise<StartTestResult> {
 
   const safeCount = Math.min(count, totalAvailable);
 
-  // Fetch all question IDs for this user, then shuffle in-memory
+  // Fetch all question IDs globally (filtered by section if requested), then shuffle in-memory
   const allQuestionIds = await prisma.question.findMany({
-    where: { document: { userId } },
+    where,
     select: { id: true },
   });
 
@@ -69,7 +85,7 @@ export async function startTest(count: number): Promise<StartTestResult> {
     },
   });
 
-  return { success: true, testId: mockTest.id, questions };
+  return { success: true, testId: mockTest.id, questions, mode };
 }
 
 /**

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { UploadCloud, Plus } from "lucide-react";
+import { UploadCloud, Plus, Layers } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { TestConfigForm } from "@/components/dashboard/TestConfigForm";
@@ -13,12 +13,53 @@ export const metadata: Metadata = {
 };
 
 async function getUserStats(userId: string) {
-  const [documentCount, questionCount, testCount] = await Promise.all([
-    prisma.document.count({ where: { userId } }),
-    prisma.question.count({ where: { document: { userId } } }),
-    prisma.mockTest.count({ where: { userId, completedAt: { not: null } } }),
-  ]);
+  const documentCount = await prisma.document.count(); // Global count
+  const questionCount = await prisma.question.count(); // Global count
+  const testCount = await prisma.mockTest.count({ where: { userId, completedAt: { not: null } } }); // Personal tests
   return { documentCount, questionCount, testCount };
+}
+
+async function getUserSections(userId: string) {
+  // Fetch all sections from all users to build a global list
+  const sections = await prisma.section.findMany({
+    include: {
+      _count: {
+        select: { questions: true }
+      }
+    },
+    orderBy: { name: "asc" }
+  });
+
+  // Group sections with the same name across different users
+  const uniqueSectionsMap = new Map<string, { id: string; name: string; count: number }>();
+  
+  sections.forEach(s => {
+    if (uniqueSectionsMap.has(s.name)) {
+      uniqueSectionsMap.get(s.name)!.count += s._count.questions;
+    } else {
+      uniqueSectionsMap.set(s.name, {
+        id: s.id, // We'll use the first ID we find for the group
+        name: s.name,
+        count: s._count.questions
+      });
+    }
+  });
+
+  const formatted = Array.from(uniqueSectionsMap.values());
+
+  const uncategorizedCount = await prisma.question.count({
+    where: { sectionId: null }
+  });
+
+  if (uncategorizedCount > 0) {
+    formatted.push({
+      id: "none",
+      name: "Uncategorized",
+      count: uncategorizedCount,
+    });
+  }
+
+  return formatted;
 }
 
 export default async function DashboardPage() {
@@ -26,6 +67,7 @@ export default async function DashboardPage() {
   const userId = session!.user!.id!;
 
   const { documentCount, questionCount, testCount } = await getUserStats(userId);
+  const sections = await getUserSections(userId);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
@@ -40,6 +82,13 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-3">
+          <Link
+            href="/sections"
+            className={buttonVariants({ variant: "outline", className: "border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl" })}
+          >
+            <Layers className="w-4 h-4 mr-2" />
+            Sections
+          </Link>
           <Link
             href="/create"
             className={buttonVariants({ variant: "outline", className: "border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl" })}
@@ -87,7 +136,10 @@ export default async function DashboardPage() {
 
       {/* Test config */}
       {questionCount > 0 && (
-        <TestConfigForm maxQuestions={questionCount} />
+        <TestConfigForm 
+          maxQuestions={questionCount} 
+          sections={sections}
+        />
       )}
     </div>
   );

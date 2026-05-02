@@ -17,13 +17,14 @@ import { type IngestResult } from "@/types";
  * NOTE: No maxDuration needed here because AI runs locally via Ollama,
  * not via a cloud serverless function.
  */
-export async function ingestImage(formData: FormData): Promise<IngestResult> {
+export async function ingestImage(formData: FormData, sectionId?: string): Promise<IngestResult> {
   // ── Auth ─────────────────────────────────────────────────────────────────
   const session = await auth();
   if (!session?.user?.id) {
     return { success: false, error: "Not authenticated. Please sign in." };
   }
   const userId = session.user.id;
+
 
   // ── Validate file ─────────────────────────────────────────────────────────
   const file = formData.get("image") as File | null;
@@ -51,11 +52,14 @@ export async function ingestImage(formData: FormData): Promise<IngestResult> {
   let questions;
   let imagePath;
   try {
+    console.log(`[Ingest] Starting AI pipeline for file: ${file.name} (${file.size} bytes)`);
     const result = await runPipeline(file);
     questions = result.questions;
     imagePath = result.imagePath;
+    console.log(`[Ingest] AI pipeline completed. Extracted ${questions.length} questions.`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "AI pipeline failed.";
+    console.error("[Ingest] AI pipeline error:", err);
     return { success: false, error: message };
   }
 
@@ -68,35 +72,34 @@ export async function ingestImage(formData: FormData): Promise<IngestResult> {
 
   // ── Persist to database ───────────────────────────────────────────────────
   try {
+    console.log("[Ingest] Persisting questions to database...");
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const document = await tx.document.create({
+      await tx.document.create({
         data: {
           userId,
           imagePath: imagePath ?? "",
+          questions: {
+            create: questions.map((q) => ({
+              sectionId,
+              rawText: q.questionText,
+              extractedQuestion: q.questionText,
+              correctAnswer: q.options[q.correctAnswerIndex] ?? q.options[0],
+              explanation: q.explanation,
+              options: {
+                create: q.options.map((optText, index) => ({
+                  text: optText,
+                  isCorrect: index === q.correctAnswerIndex,
+                })),
+              },
+            })),
+          },
         },
       });
-
-      for (const q of questions) {
-        const correctOptionText = q.options[q.correctAnswerIndex] ?? q.options[0];
-
-        await tx.question.create({
-          data: {
-            documentId: document.id,
-            rawText: q.questionText,
-            extractedQuestion: q.questionText,
-            correctAnswer: correctOptionText,
-            explanation: q.explanation,
-            options: {
-              create: q.options.map((optText, index) => ({
-                text: optText,
-                isCorrect: index === q.correctAnswerIndex,
-              })),
-            },
-          },
-        });
-      }
+    }, {
+      timeout: 30000, // Increase timeout to 30s for large question sets
     });
 
+    console.log("[Ingest] Database persistence successful.");
     return { success: true, count: questions.length };
   } catch (err) {
     console.error("Database transaction failed:", err);

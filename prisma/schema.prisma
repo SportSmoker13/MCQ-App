@@ -18,6 +18,7 @@ model User {
   createdAt    DateTime   @default(now())
   documents    Document[]
   mockTests    MockTest[]
+  sections     Section[]
 }
 
 model Document {
@@ -29,14 +30,27 @@ model Document {
   questions Question[]
 }
 
+model Section {
+  id        String     @id @default(cuid())
+  name      String
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions Question[]
+  createdAt DateTime   @default(now())
+
+  @@unique([userId, name])
+}
+
 model Question {
   id                String   @id @default(cuid())
   documentId        String
+  sectionId         String?
   rawText           String   @db.Text
   extractedQuestion String   @db.Text
   correctAnswer     String
   explanation       String   @db.Text
   document          Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  section           Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   options           Option[]
 }
 

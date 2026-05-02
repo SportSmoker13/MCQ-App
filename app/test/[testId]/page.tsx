@@ -16,6 +16,7 @@ export default function TestPage() {
   const router = useRouter();
 
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
+  const [mode, setMode] = useState<"mock" | "study">("mock");
   const [answers, setAnswers] = useState<TestAnswers>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
@@ -26,8 +27,14 @@ export default function TestPage() {
     const stored = sessionStorage.getItem(`test-${testId}`);
     if (stored) {
       try {
-        const qs = JSON.parse(stored) as TestQuestion[];
-        setQuestions(qs);
+        const data = JSON.parse(stored);
+        if (Array.isArray(data)) {
+          setQuestions(data); // Backward compatibility
+          setMode("mock");
+        } else {
+          setQuestions(data.questions);
+          setMode(data.mode);
+        }
         setLoaded(true);
       } catch {
         router.push("/");
@@ -110,6 +117,7 @@ export default function TestPage() {
         answeredCount={answeredCount}
         onSubmit={handleSubmit}
         isSubmitting={isPending}
+        mode={mode}
       />
 
       <div className="max-w-3xl mx-auto px-4 py-8">
@@ -119,6 +127,7 @@ export default function TestPage() {
           totalQuestions={questions.length}
           answers={answers}
           onSelect={handleSelect}
+          mode={mode}
         />
 
         {/* Navigation */}

@@ -6,6 +6,7 @@ import { ImageIcon, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ProgressStepper } from "./ProgressStepper";
+import { SectionSelect } from "@/components/shared/SectionSelect";
 import { ingestImage } from "@/actions/ingest";
 import { type AgentStep } from "@/types";
 
@@ -13,6 +14,7 @@ export function UploadZone() {
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [step, setStep] = useState<AgentStep>("idle");
+  const [sectionId, setSectionId] = useState<string>("");
   const [isPending, startTransition] = useTransition();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -54,7 +56,7 @@ export function UploadZone() {
       // Step reporting is synchronous in the server action;
       // we animate steps based on expected timing
       setStep("ocr");
-      const result = await ingestImage(formData);
+      const result = await ingestImage(formData, sectionId || undefined);
       setStep("persisting");
 
       await new Promise((r) => setTimeout(r, 400)); // Brief visual hold
@@ -140,6 +142,20 @@ export function UploadZone() {
           </div>
         )}
       </div>
+
+      {/* Section Input */}
+      {selectedFile && !isProcessing && step === "idle" && (
+        <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <label className="text-sm font-medium text-slate-300">
+            Select Section (Optional)
+          </label>
+          <SectionSelect 
+            value={sectionId} 
+            onChange={setSectionId} 
+            placeholder="Choose a section or create new..."
+          />
+        </div>
+      )}
 
       {/* Progress Stepper */}
       {step !== "idle" && <ProgressStepper currentStep={step} />}
